@@ -1,7 +1,10 @@
+import os
 import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+TOKEN = os.getenv("BOT_TOKEN")   # <-- БЕРЕМО ТОКЕН З RAILWAY !!!
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -74,6 +77,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
-
