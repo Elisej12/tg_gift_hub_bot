@@ -3,8 +3,6 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-TOKEN = "ВАШ_ТОКЕН_ТУТ"
-
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
@@ -76,5 +74,6 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
 
