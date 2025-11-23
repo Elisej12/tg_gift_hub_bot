@@ -1,6 +1,6 @@
 aiogram==3.4.1
 pydantic==2.5.3
-aiofiles==23.2.1
 aiohttp==3.9.5
-typing_extensions==4.9.0
-magic-filter==1.0.12
+aiofiles
+typing_extensions
+magic-filter
