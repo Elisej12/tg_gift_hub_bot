@@ -1,8 +1,9 @@
 import asyncio
+import os
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
-TOKEN = "8145174717:AAHxbgUhkH-us5l6l0JpMvTVayOKC1SVcNY"
+TOKEN = os.getenv("BOT_TOKEN")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -32,7 +33,7 @@ async def help_handler(message: types.Message):
         "/signals — ринкові сигнали\n"
     )
 
-# /price (поки заглушка)
+# /price
 @dp.message(Command("price"))
 async def price_handler(message: types.Message):
     await message.answer("🔍 Ціни скоро будуть доступні. Ми над цим працюємо!")
