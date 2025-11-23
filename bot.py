@@ -1,3 +1,4 @@
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 import asyncio
 import os
 from typing import Optional, Dict
@@ -197,3 +198,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
