@@ -5,3 +5,4 @@ aiofiles
 typing_extensions
 magic-filter
 asyncpg
+requests
