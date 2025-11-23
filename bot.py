@@ -1,34 +1,34 @@
 import asyncio
 import os
 
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command, Text
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
-# === 1. Берём токен из переменной окружения ===
+# === 1. Получаем токен из Railway ===
 TOKEN = os.getenv("BOT_TOKEN")
 
 if not TOKEN:
-    raise RuntimeError("BOT_TOKEN is not set! Add it in Railway variables.")
+    raise RuntimeError("BOT_TOKEN is not set!")
 
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
 
-# === 2. Головне меню (інлайн-кнопки) ===
+# === 2. Главное меню ===
 def main_menu():
     kb = InlineKeyboardBuilder()
     kb.button(text="📊 Ціна подарунка", callback_data="price")
     kb.button(text="🔥 Топ-дарунки", callback_data="top")
     kb.button(text="📈 Трекінг", callback_data="tracking")
     kb.button(text="⚡ Сигнали", callback_data="signals")
-    kb.adjust(1)  # по 1 кнопці в ряд
+    kb.adjust(1)
     return kb.as_markup()
 
 
-# === 3. Команда /start ===
+# === 3. /start ===
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
     await message.answer(
@@ -39,51 +39,48 @@ async def start_handler(message: types.Message):
     )
 
 
-# === 4. Команда /help ===
+# === 4. /help ===
 @dp.message(Command("help"))
 async def help_handler(message: types.Message):
     await message.answer(
         "📘 *Доступні команди:*\n"
-        "/start — головне меню\n"
-        "/help — опис команд\n"
-        "/price — ціна подарунка\n"
-        "/top — топ-дарунків\n"
-        "/track — відстеження подарунків\n"
-        "/signals — сповіщення про ринок\n\n"
-        "Працюємо лише з NFT-дарунками.\n"
-        "_API: CoinGecko_",
+        "/start – головне меню\n"
+        "/help – опис команд\n"
+        "/price – ціна подарунка\n"
+        "/top – топ-дарунків\n"
+        "/signals – ринкові сигнали\n\n"
+        "_Працюємо з NFT (CoinGecko API)_",
         parse_mode="Markdown"
     )
 
 
-# === 5. Обробка натискань на кнопки ===
-@dp.callback_query(Text("price"))
+# === 5. Обработка кнопок ===
+
+@dp.callback_query(F.data == "price")
 async def cb_price(callback: types.CallbackQuery):
-    await callback.message.answer(
-        "🔍 Введи назву NFT подарунка, щоб дізнатися актуальну ціну."
-    )
+    await callback.message.answer("🔍 Введи назву NFT подарунка.")
     await callback.answer()
 
 
-@dp.callback_query(Text("top"))
+@dp.callback_query(F.data == "top")
 async def cb_top(callback: types.CallbackQuery):
-    await callback.message.answer("🔥 ТОП-дарунків скоро буде доступний!")
+    await callback.message.answer("🔥 Топ-дарунків скоро буде доступний.")
     await callback.answer()
 
 
-@dp.callback_query(Text("tracking"))
+@dp.callback_query(F.data == "tracking")
 async def cb_tracking(callback: types.CallbackQuery):
-    await callback.message.answer("📈 Трекінг подарунків в процесі розробки.")
+    await callback.message.answer("📈 Трекінг в процесі розробки.")
     await callback.answer()
 
 
-@dp.callback_query(Text("signals"))
+@dp.callback_query(F.data == "signals")
 async def cb_signals(callback: types.CallbackQuery):
-    await callback.message.answer("⚡ Сигнали ринку незабаром будуть доступні.")
+    await callback.message.answer("⚡ Сигнали ринку скоро будуть.")
     await callback.answer()
 
 
-# === 6. Запуск бота ===
+# === 6. Запуск ===
 async def main():
     print("Bot started...")
     await dp.start_polling(bot)
