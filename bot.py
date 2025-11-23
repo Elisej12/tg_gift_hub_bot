@@ -1,23 +1,48 @@
-import asyncio
 import os
-
-from aiogram import Bot, Dispatcher, types, F
+import asyncio
+import asyncpg
+from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-
-# === 1. Получаем токен из Railway ===
+# =========================
+# 1. Telegram TOKEN
+# =========================
 TOKEN = os.getenv("BOT_TOKEN")
 
-if not TOKEN:
-    raise RuntimeError("BOT_TOKEN is not set!")
+# =========================
+# 2. Database URL
+# =========================
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-
+# =========================
+# Bot + Dispatcher
+# =========================
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+# =========================
+# Database connection
+# =========================
+async def connect_db():
+    conn = await asyncpg.connect(DATABASE_URL)
+    
+    # Створюємо таблицю якщо її немає
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS gifts (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            price FLOAT,
+            updated_at TIMESTAMP DEFAULT NOW()
+        );
+    """)
+    await conn.close()
+    print("✅ Database connected & table created")
 
-# === 2. Главное меню ===
+
+# ===========================================================
+# Головне меню
+# ===========================================================
 def main_menu():
     kb = InlineKeyboardBuilder()
     kb.button(text="📊 Ціна подарунка", callback_data="price")
@@ -28,7 +53,9 @@ def main_menu():
     return kb.as_markup()
 
 
-# === 3. /start ===
+# ===========================================================
+# Команди
+# ===========================================================
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
     await message.answer(
@@ -39,50 +66,55 @@ async def start_handler(message: types.Message):
     )
 
 
-# === 4. /help ===
 @dp.message(Command("help"))
 async def help_handler(message: types.Message):
     await message.answer(
         "📘 *Доступні команди:*\n"
-        "/start – головне меню\n"
-        "/help – опис команд\n"
-        "/price – ціна подарунка\n"
-        "/top – топ-дарунків\n"
-        "/signals – ринкові сигнали\n\n"
-        "_Працюємо з NFT (CoinGecko API)_",
+        "/start — меню\n"
+        "/help — опис команд\n"
+        "/price — ціна NFT\n"
+        "/top — топ NFT\n"
+        "/track — відстеження\n"
+        "/signals — ринкові зміни\n",
         parse_mode="Markdown"
     )
 
 
-# === 5. Обработка кнопок ===
-
-@dp.callback_query(F.data == "price")
+# ===========================================================
+# Обробка кнопок
+# ===========================================================
+@dp.callback_query(lambda c: c.data == "price")
 async def cb_price(callback: types.CallbackQuery):
     await callback.message.answer("🔍 Введи назву NFT подарунка.")
     await callback.answer()
 
 
-@dp.callback_query(F.data == "top")
+@dp.callback_query(lambda c: c.data == "top")
 async def cb_top(callback: types.CallbackQuery):
-    await callback.message.answer("🔥 Топ-дарунків скоро буде доступний.")
+    await callback.message.answer("🔥 ТОП-дарунків скоро буде доступний!")
     await callback.answer()
 
 
-@dp.callback_query(F.data == "tracking")
-async def cb_tracking(callback: types.CallbackQuery):
-    await callback.message.answer("📈 Трекінг в процесі розробки.")
+@dp.callback_query(lambda c: c.data == "tracking")
+async def cb_track(callback: types.CallbackQuery):
+    await callback.message.answer("📈 Трекінг подарунків в процесі.")
     await callback.answer()
 
 
-@dp.callback_query(F.data == "signals")
+@dp.callback_query(lambda c: c.data == "signals")
 async def cb_signals(callback: types.CallbackQuery):
-    await callback.message.answer("⚡ Сигнали ринку скоро будуть.")
+    await callback.message.answer("⚡ Сигнали ринку будуть скоро.")
     await callback.answer()
 
 
-# === 6. Запуск ===
+# ===========================================================
+# Запуск
+# ===========================================================
 async def main():
-    print("Bot started...")
+    # Підключення до БД
+    await connect_db()
+
+    # Запуск бота
     await dp.start_polling(bot)
 
 
