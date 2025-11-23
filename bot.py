@@ -1,48 +1,22 @@
-import os
 import asyncio
-import asyncpg
-from aiogram import Bot, Dispatcher, types
+import requests
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+import os
 
-# =========================
-# 1. Telegram TOKEN
-# =========================
+# ============================================================
+# БЕРЕМО ТОКЕН ІЗ Railway
+# ============================================================
 TOKEN = os.getenv("BOT_TOKEN")
 
-# =========================
-# 2. Database URL
-# =========================
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-# =========================
-# Bot + Dispatcher
-# =========================
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# =========================
-# Database connection
-# =========================
-async def connect_db():
-    conn = await asyncpg.connect(DATABASE_URL)
-    
-    # Створюємо таблицю якщо її немає
-    await conn.execute("""
-        CREATE TABLE IF NOT EXISTS gifts (
-            id SERIAL PRIMARY KEY,
-            name TEXT NOT NULL,
-            price FLOAT,
-            updated_at TIMESTAMP DEFAULT NOW()
-        );
-    """)
-    await conn.close()
-    print("✅ Database connected & table created")
 
-
-# ===========================================================
-# Головне меню
-# ===========================================================
+# ============================================================
+# КНОПКИ — Головне меню
+# ============================================================
 def main_menu():
     kb = InlineKeyboardBuilder()
     kb.button(text="📊 Ціна подарунка", callback_data="price")
@@ -53,9 +27,10 @@ def main_menu():
     return kb.as_markup()
 
 
-# ===========================================================
-# Команди
-# ===========================================================
+
+# ============================================================
+# /start
+# ============================================================
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
     await message.answer(
@@ -66,57 +41,105 @@ async def start_handler(message: types.Message):
     )
 
 
+# ============================================================
+# /help
+# ============================================================
 @dp.message(Command("help"))
 async def help_handler(message: types.Message):
     await message.answer(
         "📘 *Доступні команди:*\n"
-        "/start — меню\n"
+        "/start — головне меню\n"
         "/help — опис команд\n"
-        "/price — ціна NFT\n"
-        "/top — топ NFT\n"
-        "/track — відстеження\n"
-        "/signals — ринкові зміни\n",
+        "/price — ціна подарунка / токена\n"
+        "/top — топ-дарунків\n"
+        "/track — відстеження подарунків\n"
+        "/signals — ринкові сповіщення\n\n"
+        "_Працюємо з CoinGecko API_",
         parse_mode="Markdown"
     )
 
 
-# ===========================================================
-# Обробка кнопок
-# ===========================================================
-@dp.callback_query(lambda c: c.data == "price")
+# ============================================================
+# CoinGecko API — пошук токена/NFT
+# ============================================================
+COINGECKO_URL = "https://api.coingecko.com/api/v3/coins/markets"
+
+async def get_nft_price(name: str):
+    """Пошук NFT/токена по назві."""
+    params = {
+        "vs_currency": "usd",
+        "order": "market_cap_desc",
+        "per_page": 250,
+        "page": 1,
+        "sparkline": False
+    }
+
+    try:
+        response = requests.get(COINGECKO_URL, params=params, timeout=5)
+        data = response.json()
+    except Exception:
+        return None
+
+    # Пошук збігів
+    for item in data:
+        if name.lower() in item["name"].lower():
+            return {
+                "name": item["name"],
+                "symbol": item["symbol"],
+                "price": item["current_price"],
+                "change": item["price_change_percentage_24h"],
+                "volume": item["total_volume"],
+                "image": item["image"]
+            }
+
+    return None
+
+
+
+# ============================================================
+# Обробка кнопки "Ціна подарунка"
+# ============================================================
+@dp.callback_query(F.data == "price")
 async def cb_price(callback: types.CallbackQuery):
-    await callback.message.answer("🔍 Введи назву NFT подарунка.")
+    await callback.message.answer("🔍 Введи назву NFT/токена:")
     await callback.answer()
 
 
-@dp.callback_query(lambda c: c.data == "top")
-async def cb_top(callback: types.CallbackQuery):
-    await callback.message.answer("🔥 ТОП-дарунків скоро буде доступний!")
-    await callback.answer()
+
+# ============================================================
+# Основний обробник тексту — пошук NFT / токена
+# ============================================================
+@dp.message()
+async def search_nft(message: types.Message):
+    name = message.text.strip()
+
+    result = await get_nft_price(name)
+
+    if not result:
+        await message.answer("❌ Нічого не знайдено. Спробуй іншу назву.")
+        return
+
+    text = (
+        f"🎁 *{result['name']}* (`{result['symbol']}`)\n\n"
+        f"💲 *Ціна:* `${result['price']}`\n"
+        f"📉 *24h зміна:* `{result['change']}%`\n"
+        f"📊 *Обсяг:* `${result['volume']}`\n"
+    )
+
+    await message.answer_photo(
+        result["image"],
+        caption=text,
+        parse_mode="Markdown"
+    )
 
 
-@dp.callback_query(lambda c: c.data == "tracking")
-async def cb_track(callback: types.CallbackQuery):
-    await callback.message.answer("📈 Трекінг подарунків в процесі.")
-    await callback.answer()
 
-
-@dp.callback_query(lambda c: c.data == "signals")
-async def cb_signals(callback: types.CallbackQuery):
-    await callback.message.answer("⚡ Сигнали ринку будуть скоро.")
-    await callback.answer()
-
-
-# ===========================================================
-# Запуск
-# ===========================================================
+# ============================================================
+# ЗАПУСК БОТА
+# ============================================================
 async def main():
-    # Підключення до БД
-    await connect_db()
-
-    # Запуск бота
+    print("Bot started...")
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
