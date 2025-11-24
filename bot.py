@@ -249,14 +249,19 @@ async def text_router(message: types.Message):
 
     volume_str = f"{volume:.2f}" if volume is not None else "—"
 
-    text_reply = (
-        f"🎁 *{name}*\n"
-        f"`{slug}`\n\n"
-        f"💎 *Ціна:* `{price}`\n"
-        f"📉 *24h зміна:* {change_str}\n"
-        f"📊 *Обʼєм:* `{volume_str}`\n"
-        f"🕒 Оновлено: `{updated_at}`"
-    )
+   price_str = f"{float(price):.2f}"
+volume_str = f"{float(volume):.0f}" if volume else "—"
+updated_str = updated_at.strftime("%Y-%m-%d %H:%M")
+
+text_reply = (
+    f"🎁 *{name}*\n"
+    f"`{slug}`\n\n"
+    f"💎 *Ціна:* `{price_str}` TON\n"
+    f"📉 *24h зміна:* {change_str}\n"
+    f"📊 *Обʼєм:* `{volume_str}`\n"
+    f"🕒 *Оновлено:* `{updated_str}`"
+)
+
 
     await message.answer(text_reply, parse_mode="Markdown")
 
@@ -272,3 +277,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
