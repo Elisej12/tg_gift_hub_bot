@@ -5,6 +5,7 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+
 # ==========================
 # 1. Конфігурація
 # ==========================
@@ -28,9 +29,6 @@ db_pool: asyncpg.Pool | None = None
 # ==========================
 
 async def init_db():
-    """
-    Створюємо pool підключень та таблицю gifts, якщо її ще немає.
-    """
     global db_pool
     db_pool = await asyncpg.create_pool(DATABASE_URL)
 
@@ -38,11 +36,11 @@ async def init_db():
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS gifts (
                 id SERIAL PRIMARY KEY,
-                slug TEXT UNIQUE,              -- технічне ім'я: snow_globe
-                name TEXT NOT NULL,            -- красиве ім'я: Snow Globe
-                last_price NUMERIC,            -- остання ціна (наприклад, в TON)
-                last_change_24h NUMERIC,       -- зміна за 24 години (%)
-                last_volume NUMERIC,           -- об'єм торгів
+                slug TEXT UNIQUE,
+                name TEXT NOT NULL,
+                last_price NUMERIC,
+                last_change_24h NUMERIC,
+                last_volume NUMERIC,
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             );
         """)
@@ -50,7 +48,7 @@ async def init_db():
 
 
 # ==========================
-# 3. Клавіатура головного меню
+# 3. Клавіатура меню
 # ==========================
 
 def main_menu():
@@ -83,47 +81,29 @@ async def help_handler(message: types.Message):
         "📘 *Доступні команди:*\n"
         "/start — головне меню\n"
         "/help — опис команд\n"
-        "/price — ціна подарунка (з нашої бази)\n"
-        "/addgift — додати/оновити gift в базі\n\n"
-        "Надалі буде:\n"
-        "• /top — топ дарунків\n"
-        "• /track — відстеження\n"
-        "• /signals — ринкові сигнали\n",
+        "/price — ціна подарунка\n"
+        "/addgift — додати gift у базу\n",
         parse_mode="Markdown"
     )
 
 
 # ==========================
-# 5. Додавання gift в БД  (/addgift)
+# 5. /addgift
 # ==========================
 
 @dp.message(Command("addgift"))
 async def addgift_handler(message: types.Message):
-    """
-    Формат:
-    /addgift slug Назва_з_пробілами_через_нижнє_підкреслення 3.16 10.1 72800
-
-    де:
-      slug           — технічна назва (snow_globe)
-      Назва_...      — відображуване ім'я (Snow Globe)
-      3.16           — ціна (наприклад, в TON)
-      10.1           — зміна за 24h (%)
-      72800          — об'єм торгів
-
-    Мінімальний формат:
-    /addgift slug Назва_з_підкресленнями 3.16
-    (інші поля можна не вказувати)
-    """
     global db_pool
+
     if db_pool is None:
-        await message.answer("❌ База даних ще не готова. Спробуйте пізніше.")
+        await message.answer("❌ База даних ще не готова.")
         return
 
     parts = message.text.split()
     if len(parts) < 4:
         await message.answer(
-            "❗ Формат команди:\n"
-            "`/addgift slug Назва_з_підкресленнями ціна [зміна24h] [обʼєм]`\n\n"
+            "❗ Формат:\n"
+            "`/addgift slug Name_With_Underscores price [change24h] [volume]`\n\n"
             "Приклад:\n"
             "`/addgift snow_globe Snow_Globe 3.16 10.1 72800`",
             parse_mode="Markdown"
@@ -131,143 +111,107 @@ async def addgift_handler(message: types.Message):
         return
 
     slug = parts[1]
-    name_raw = parts[2]
-    name = name_raw.replace("_", " ")
+    name = parts[2].replace("_", " ")
 
     try:
         price = float(parts[3].replace(",", "."))
-    except ValueError:
-        await message.answer("❌ Некоректна ціна. Приклад: 3.16")
+    except:
+        await message.answer("❌ Некоректна ціна!")
         return
 
-    change_24h = None
-    volume = None
-
-    if len(parts) >= 5:
-        try:
-            change_24h = float(parts[4].replace(",", "."))
-        except ValueError:
-            change_24h = None
-
-    if len(parts) >= 6:
-        try:
-            volume = float(parts[5].replace(",", "."))
-        except ValueError:
-            volume = None
+    change_24h = float(parts[4]) if len(parts) > 4 else None
+    volume = float(parts[5]) if len(parts) > 5 else None
 
     async with db_pool.acquire() as conn:
         await conn.execute("""
             INSERT INTO gifts (slug, name, last_price, last_change_24h, last_volume, updated_at)
             VALUES ($1, $2, $3, $4, $5, NOW())
-            ON CONFLICT (slug) DO UPDATE
-              SET name = EXCLUDED.name,
-                  last_price = EXCLUDED.last_price,
-                  last_change_24h = EXCLUDED.last_change_24h,
-                  last_volume = EXCLUDED.last_volume,
-                  updated_at = NOW();
+            ON CONFLICT (slug) DO UPDATE SET
+                name = EXCLUDED.name,
+                last_price = EXCLUDED.last_price,
+                last_change_24h = EXCLUDED.last_change_24h,
+                last_volume = EXCLUDED.last_volume,
+                updated_at = NOW();
         """, slug, name, price, change_24h, volume)
 
-    await message.answer(
-        f"✅ Gift збережено:\n"
-        f"`{slug}` → *{name}* — {price}",
-        parse_mode="Markdown"
-    )
+    await message.answer(f"✅ Gift `{slug}` → *{name}* збережено!", parse_mode="Markdown")
 
 
 # ==========================
-# 6. Кнопка "Ціна подарунка" + /price
+# 6. /price кнопка
 # ==========================
 
 @dp.callback_query(F.data == "price")
 async def cb_price(callback: types.CallbackQuery):
-    await callback.message.answer("🔍 Введи назву або slug giftʼа (наприклад: `snow_globe` або `Snow Globe`).",
-                                  parse_mode="Markdown")
+    await callback.message.answer("🔍 Введи назву або slug giftʼа:", parse_mode="Markdown")
     await callback.answer()
 
 
 @dp.message(Command("price"))
-async def price_command(message: types.Message):
-    await message.answer(
-        "🔍 Введи назву або slug giftʼа (наприклад: `snow_globe` або `Snow Globe`).",
-        parse_mode="Markdown"
-    )
+async def price_cmd(message: types.Message):
+    await message.answer("🔍 Введи назву або slug giftʼа:", parse_mode="Markdown")
 
 
 # ==========================
-# 7. Пошук gift в БД за текстом користувача
+# 7. Пошук у БД
 # ==========================
 
 async def find_gift(query: str):
-    """
-    Шукаємо gift по name або slug (частковий збіг).
-    """
     global db_pool
-    if db_pool is None:
-        return None
-
     q = f"%{query.lower()}%"
+
     async with db_pool.acquire() as conn:
-        row = await conn.fetchrow("""
+        return await conn.fetchrow("""
             SELECT slug, name, last_price, last_change_24h, last_volume, updated_at
             FROM gifts
-            WHERE LOWER(name) LIKE $1
-               OR LOWER(slug) LIKE $1
+            WHERE LOWER(name) LIKE $1 OR LOWER(slug) LIKE $1
             ORDER BY updated_at DESC
             LIMIT 1;
         """, q)
-    return row
 
 
 # ==========================
-# 8. Обробка тексту (як запит до /price)
+# 8. Обробка всього тексту (пошук)
 # ==========================
 
 @dp.message()
 async def text_router(message: types.Message):
-    """
-    Все, що не команда — вважаємо спробою пошуку gift.
-    (поки що так, потім можна зробити FSM/стани)
-    """
     text = message.text.strip()
 
-    # Ігноруємо інші команди типу /start, /help
     if text.startswith("/"):
         return
 
     gift = await find_gift(text)
     if not gift:
-        await message.answer("❌ Не знайшов gift з такою назвою. Спробуй інший запит або додай через /addgift.")
+        await message.answer("❌ Не знайдено. Спробуй інший запит або додай через /addgift.")
         return
 
     slug, name, price, change_24h, volume, updated_at = gift
 
-    # Форматуємо гарну картку
-    change_str = "—"
-    if change_24h is not None:
+    price_str = f"{float(price):.2f}"
+    volume_str = f"{float(volume):.0f}" if volume else "—"
+    updated_str = updated_at.strftime("%Y-%m-%d %H:%M")
+
+    if change_24h is None:
+        change_str = "—"
+    else:
         arrow = "📈" if change_24h >= 0 else "📉"
         change_str = f"{arrow} {change_24h:.2f}%"
 
-    volume_str = f"{volume:.2f}" if volume is not None else "—"
-
-   price_str = f"{float(price):.2f}"
-volume_str = f"{float(volume):.0f}" if volume else "—"
-updated_str = updated_at.strftime("%Y-%m-%d %H:%M")
-
-text_reply = (
-    f"🎁 *{name}*\n"
-    f"`{slug}`\n\n"
-    f"💎 *Ціна:* `{price_str}` TON\n"
-    f"📉 *24h зміна:* {change_str}\n"
-    f"📊 *Обʼєм:* `{volume_str}`\n"
-    f"🕒 *Оновлено:* `{updated_str}`"
-)
-
+    text_reply = (
+        f"🎁 *{name}*\n"
+        f"`{slug}`\n\n"
+        f"💎 *Ціна:* `{price_str}` TON\n"
+        f"📉 *24h зміна:* {change_str}\n"
+        f"📊 *Обʼєм:* `{volume_str}`\n"
+        f"🕒 *Оновлено:* `{updated_str}`"
+    )
 
     await message.answer(text_reply, parse_mode="Markdown")
 
 
 # ==========================
-# 9. Запуск бота
+# 9. Запуск
 # ==========================
 
 async def main():
@@ -275,6 +219,6 @@ async def main():
     print("🤖 Bot is running...")
     await dp.start_polling(bot)
 
+
 if __name__ == "__main__":
     asyncio.run(main())
-
