@@ -196,3 +196,24 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+
+@dp.message()
+async def text_router(message: types.Message):
+    text = (message.text or "").strip()
+    if not text:
+        return
+
+    if text.startswith("/"):
+        return
+
+    matches = search_gifts(text)
+
+    if not matches:
+        await message.answer("❌ Нічого не знайдено по цьому запиту. Спробуй іншу назву.")
+        return
+
+    for g in matches:
+        ...
+
