@@ -1,218 +1,197 @@
 import os
 import asyncio
-import asyncpg
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # ==========================
-# 1. Конфігурація
+# 1. КОНФИГ
 # ==========================
 
 TOKEN = os.getenv("BOT_TOKEN")
-DATABASE_URL = os.getenv("DATABASE_URL")
-
 if not TOKEN:
-    raise RuntimeError("BOT_TOKEN is not set in environment!")
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL is not set in environment!")
+    raise RuntimeError("BOT_TOKEN is not set!")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-db_pool: asyncpg.Pool | None = None
+# ==========================
+# 2. СПИСОК GIFTS (пока вручную)
+# ==========================
+
+# Можно добавить свои gifты сюда
+GIFTS = [
+    {
+        "slug": "snow_globe",
+        "name": "Snow Globe",
+        "price": 3.16,
+        "change_24h": 10.1,
+        "volume": 72800,
+        "image_url": "https://cdn.pixabay.com/photo/2017/01/31/21/23/snow-globe-2021066_1280.png"
+    },
+    {
+        "slug": "cat_mask",
+        "name": "Cat Mask",
+        "price": 5.99,
+        "change_24h": -2.3,
+        "volume": 15400,
+        "image_url": "https://cdn.pixabay.com/photo/2017/11/11/21/41/cat-2944820_1280.png"
+    },
+    {
+        "slug": "heart_box",
+        "name": "Heart Box",
+        "price": 2.45,
+        "change_24h": 3.7,
+        "volume": 9820,
+        "image_url": "https://cdn.pixabay.com/photo/2017/02/12/17/15/heart-2069396_1280.png"
+    }
+]
 
 
 # ==========================
-# 2. Ініціалізація БД
-# ==========================
-
-async def init_db():
-    """
-    Створюємо pool підключень та таблицю gifts, якщо її ще немає.
-    """
-    global db_pool
-    db_pool = await asyncpg.create_pool(DATABASE_URL)
-
-    async with db_pool.acquire() as conn:
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS gifts (
-                id SERIAL PRIMARY KEY,
-                slug TEXT UNIQUE,
-                name TEXT NOT NULL,
-                last_price NUMERIC,
-                last_change_24h NUMERIC,
-                last_volume NUMERIC,
-                updated_at TIMESTAMPTZ DEFAULT NOW()
-            );
-        """)
-    print("✅ DB initialized (gifts table ready)")
-
-
-# ==========================
-# 3. Кнопки головного меню
+# 3. МЕНЮ
 # ==========================
 
 def main_menu():
     kb = InlineKeyboardBuilder()
     kb.button(text="📊 Ціна подарунка", callback_data="price")
     kb.button(text="🔥 Топ-дарунки", callback_data="top")
-    kb.button(text="📈 Трекінг", callback_data="tracking")
-    kb.button(text="⚡ Сигнали", callback_data="signals")
+    kb.button(text="📈 Трекінг (soon)", callback_data="tracking")
+    kb.button(text="⚡ Сигнали (soon)", callback_data="signals")
     kb.adjust(1)
     return kb.as_markup()
 
 
 # ==========================
-# 4. Команди
+# 4. КОМАНДЫ
 # ==========================
 
 @dp.message(Command("start"))
-async def start_handler(message: types.Message):
+async def cmd_start(message: types.Message):
     await message.answer(
-        "🎁 *TG Gift Hub Bot — твій асистент подарунків і NFT!*\n\n"
-        "Оберіть дію нижче:",
+        "🎁 *TG Gift Hub Bot*\n\n"
+        "Маленьке застосунок всередині Telegram для NFT / gifts.\n\n"
+        "Оберіть дію:",
         reply_markup=main_menu(),
         parse_mode="Markdown"
     )
 
 
 @dp.message(Command("help"))
-async def help_handler(message: types.Message):
+async def cmd_help(message: types.Message):
     await message.answer(
-        "📘 *Доступні команди:*\n"
+        "📘 *Команди:*\n"
         "/start — головне меню\n"
-        "/help — опис команд\n"
-        "/price — пошук gift\n"
-        "/addgift — додати gift в базу\n",
+        "/help — допомога\n\n"
+        "Просто напиши частину назви giftʼа (наприклад: `snow`, `cat`, `heart`),\n"
+        "і я покажу всі знайдені варіанти.",
         parse_mode="Markdown"
     )
 
 
 # ==========================
-# 5. Додавання gift у БД
-# ==========================
-
-@dp.message(Command("addgift"))
-async def addgift_handler(message: types.Message):
-    global db_pool
-
-    parts = message.text.split()
-    if len(parts) < 4:
-        await message.answer(
-            "❗ Формат:\n"
-            "`/addgift slug Назва_з_підкресленнями ціна [зміна24h] [обʼєм]`\n\n"
-            "Приклад:\n"
-            "`/addgift snow_globe Snow_Globe 3.16 10.1 72800`",
-            parse_mode="Markdown"
-        )
-        return
-
-    slug = parts[1]
-    name = parts[2].replace("_", " ")
-
-    try:
-        price = float(parts[3].replace(",", "."))
-    except:
-        await message.answer("❌ Некоректна ціна.")
-        return
-
-    change_24h = float(parts[4]) if len(parts) >= 5 else None
-    volume = float(parts[5]) if len(parts) >= 6 else None
-
-    async with db_pool.acquire() as conn:
-        await conn.execute("""
-            INSERT INTO gifts (slug, name, last_price, last_change_24h, last_volume, updated_at)
-            VALUES ($1, $2, $3, $4, $5, NOW())
-            ON CONFLICT (slug) DO UPDATE
-              SET name=EXCLUDED.name,
-                  last_price=EXCLUDED.last_price,
-                  last_change_24h=EXCLUDED.last_change_24h,
-                  last_volume=EXCLUDED.last_volume,
-                  updated_at=NOW();
-        """, slug, name, price, change_24h, volume)
-
-    await message.answer(f"✅ Gift *{name}* збережено!", parse_mode="Markdown")
-
-
-# ==========================
-# 6. Кнопка "Ціна"
+# 5. CALLBACK КНОПКИ
 # ==========================
 
 @dp.callback_query(F.data == "price")
 async def cb_price(callback: types.CallbackQuery):
-    await callback.message.answer("🔍 Введи назву або slug giftʼа (наприклад: snow_globe)")
+    await callback.message.answer(
+        "🔍 Введи назву або частину назви giftʼа (наприклад: `snow`, `mask`, `cat`)."
+    )
     await callback.answer()
 
 
-@dp.message(Command("price"))
-async def price_msg(message: types.Message):
-    await message.answer("🔍 Введи назву або slug giftʼа.")
+@dp.callback_query(F.data == "top")
+async def cb_top(callback: types.CallbackQuery):
+    await callback.message.answer("🔥 Топ-дарунки буде додано пізніше.")
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "tracking")
+async def cb_tracking(callback: types.CallbackQuery):
+    await callback.message.answer("📈 Трекінг скоро буде доступний.")
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "signals")
+async def cb_signals(callback: types.CallbackQuery):
+    await callback.message.answer("⚡ Сигнали ринку у розробці.")
+    await callback.answer()
 
 
 # ==========================
-# 7. Пошук ПОВНОГО списку подарунків
+# 6. ПОШУК ПО СПИСКУ GIFTS
 # ==========================
 
-async def find_gifts(query: str):
-    global db_pool
-    q = f"%{query.lower()}%"
-
-    async with db_pool.acquire() as conn:
-        rows = await conn.fetch("""
-            SELECT slug, name, last_price, last_change_24h, last_volume, updated_at
-            FROM gifts
-            WHERE LOWER(name) LIKE $1 OR LOWER(slug) LIKE $1
-            ORDER BY updated_at DESC;
-        """, q)
-
-    return rows
+def search_gifts(query: str):
+    """
+    Повертає список gifтов, де query входить в name або slug (без урахування регістру).
+    """
+    q = query.lower()
+    results = []
+    for g in GIFTS:
+        if q in g["name"].lower() or q in g["slug"].lower():
+            results.append(g)
+    return results
 
 
 # ==========================
-# 8. Обробка тексту — пошук
+# 7. ОБРОБКА ТЕКСТУ (ПОШУК)
 # ==========================
 
 @dp.message()
 async def text_router(message: types.Message):
-    text = message.text.strip()
+    text = (message.text or "").strip()
+    if not text:
+        return
 
+    # Якщо це команда — ігноруємо (їх вже обробляють інші хендлери)
     if text.startswith("/"):
         return
 
-    results = await find_gifts(text)
+    matches = search_gifts(text)
 
-    if not results:
-        await message.answer("❌ Нічого не знайдено.")
+    if not matches:
+        await message.answer("❌ Нічого не знайдено по цьому запиту. Спробуй іншу назву.")
         return
 
-    for slug, name, price, change_24h, volume, updated_at in results:
+    # Виводимо всі знайдені
+    for g in matches:
+        slug = g["slug"]
+        name = g["name"]
+        price = g["price"]
+        change = g["change_24h"]
+        volume = g["volume"]
+        image_url = g["image_url"]
 
-        change_str = "—"
-        if change_24h is not None:
-            arrow = "📈" if change_24h >= 0 else "📉"
-            change_str = f"{arrow} {change_24h:.2f}%"
+        arrow = "📈" if change >= 0 else "📉"
+        change_str = f"{arrow} {change:.2f}%"
+        volume_str = f"{volume:.0f}"
 
-        volume_str = f"{volume:.2f}" if volume else "—"
-
-        card = (
+        caption = (
             f"🎁 *{name}*\n"
             f"`{slug}`\n\n"
             f"💎 Ціна: `{price}`\n"
-            f"📉 24h зміна: {change_str}\n"
-            f"📊 Обʼєм: `{volume_str}`\n"
-            f"🕒 Оновлено: `{updated_at}`"
+            f"📊 24h зміна: {change_str}\n"
+            f"📦 Обʼєм: `{volume_str}`"
         )
 
-        await message.answer(card, parse_mode="Markdown")
+        if image_url:
+            await message.answer_photo(
+                photo=image_url,
+                caption=caption,
+                parse_mode="Markdown"
+            )
+        else:
+            await message.answer(caption, parse_mode="Markdown")
 
 
 # ==========================
-# 9. Запуск
+# 8. ЗАПУСК БОТА
 # ==========================
 
 async def main():
-    await init_db()
+    print("🤖 Bot is running (no DB, gifts in code)...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
